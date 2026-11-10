@@ -6,6 +6,7 @@ Personal AI agent skills by [chiubaca](https://github.com/chiubaca).
 
 | Skill | Description |
 | --- | --- |
+| [attach-image](skills/attach-image/) | Copy a local image into the chiubaca/notes attachments folder and return the markdown reference. |
 | [chiubaca-voice](skills/chiubaca-voice/) | Write and edit in chiubaca's personal voice. |
 
 ## Structure
