@@ -20,21 +20,37 @@ const NOTES_DIR = process.env.NOTES_DIR
 const ATTACHMENTS_DIR = join(NOTES_DIR, "attachments");
 
 function printUsage() {
-  console.error("Usage: attach-image.mjs <source-path> [alt-text] [--commit]");
+  console.error(
+    "Usage: attach-image.mjs <source-path> [alt-text] [--name <slug>] [--commit]",
+  );
   process.exit(1);
 }
 
 function parseArgs(argv) {
   const positional = [];
   let commit = false;
-  for (const arg of argv) {
+  let name;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === "--commit") {
       commit = true;
+    } else if (arg === "--name") {
+      name = argv[++i];
+      if (!name) {
+        console.error("--name requires a value");
+        process.exit(1);
+      }
+    } else if (arg.startsWith("--name=")) {
+      name = arg.slice("--name=".length);
+      if (!name) {
+        console.error("--name requires a value");
+        process.exit(1);
+      }
     } else {
       positional.push(arg);
     }
   }
-  return { sourcePath: positional[0], altText: positional[1], commit };
+  return { sourcePath: positional[0], altText: positional[1], name, commit };
 }
 
 async function isImageByMagic(filePath) {
@@ -49,13 +65,24 @@ async function isImageByMagic(filePath) {
   return null;
 }
 
-function sanitizeFilename(name) {
-  const base = name.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "");
-  return base || "image";
+// Build a short filename slug: lowercase, dash-separated, at most three words.
+function slugifyName(name) {
+  const words = String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 3);
+  return words.length ? words.join("-") : "image";
+}
+
+function stripExtension(name) {
+  return name.replace(/\.[a-z0-9]+$/i, "");
 }
 
 async function main() {
-  const { sourcePath: sourcePathRaw, altText = "image", commit } = parseArgs(
+  const { sourcePath: sourcePathRaw, altText, name, commit } = parseArgs(
     process.argv.slice(2),
   );
 
@@ -87,10 +114,17 @@ async function main() {
     process.exit(1);
   }
 
-  let targetName = sanitizeFilename(basename(sourcePath));
-  if (!targetName.toLowerCase().endsWith(ext)) {
-    targetName = `${targetName}${ext}`;
+  // Prefer the --name the caller derived by analysing the image. Fall back to
+  // the source filename, still enforcing the short lowercase dash-separated slug.
+  const rawName = stripExtension(name ?? basename(sourcePath));
+  const slug = slugifyName(rawName);
+  if (!name) {
+    console.error(
+      `Hint: pass --name "<one-to-three-words>" from the image contents for a descriptive filename (using "${slug}").`,
+    );
   }
+  const resolvedAltText = altText ?? slug.replace(/-/g, " ");
+  let targetName = `${slug}${ext}`;
 
   await mkdir(ATTACHMENTS_DIR, { recursive: true });
 
@@ -148,7 +182,7 @@ async function main() {
     }
   }
 
-  const markdownRef = `![${altText}](attachments/${targetName})`;
+  const markdownRef = `![${resolvedAltText}](attachments/${targetName})`;
   console.log(markdownRef);
 }
 
